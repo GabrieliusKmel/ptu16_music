@@ -18,6 +18,7 @@ class Album(models.Model):
     name = models.CharField(_("album"), max_length=50)
     band = models.ForeignKey(Band, verbose_name=_("band"), on_delete=models.CASCADE)
     user = models.ForeignKey(User, verbose_name=_("user"), on_delete=models.CASCADE)
+    image = models.ImageField(_("image"), upload_to='posts/img', null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} by {self.band}"

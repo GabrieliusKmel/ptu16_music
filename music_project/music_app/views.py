@@ -1,7 +1,25 @@
+from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, mixins, response, status
 from rest_framework.validators import ValidationError
 from . import models, serializers
+
+
+User = get_user_model()
+
+
+class UserCreate(generics.CreateAPIView, mixins.DestroyModelMixin):
+    queryset = User.objects.all()
+    serializer_class = serializers.UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def delete(self, *args, **kwargs):
+        user = User.objects.filter(pk=self.request.user.pk)
+        if user.exists():
+            user.delete()
+            return response.Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            raise ValidationError('User does not exist')
 
 
 class BandList(generics.ListCreateAPIView):
@@ -127,33 +145,26 @@ class AlbumReviewDetail(generics.RetrieveUpdateDestroyAPIView):
         else:
             raise ValidationError(_('Can only update your own reviews.'))
         
-
-class AlbumReviewLikeList(generics.ListCreateAPIView):
-    queryset = models.AlbumReviewLike.objects.all()
+        
+class AlbumReviewLike(generics.CreateAPIView, mixins.DestroyModelMixin):
     serializer_class = serializers.AlbumReviewLikeSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+    def get_queryset(self):
+        user = self.request.user
+        albumreview = models.AlbumReview.objects.get(pk=self.kwargs['pk'])
+        return models.AlbumReviewLike.objects.filter(albumreview=albumreview, user=user)
+    
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-
-class AlbumReviewLikeDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = models.AlbumReviewLike.objects.all()
-    serializer_class = serializers.AlbumReviewLikeSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        if self.get_queryset().exists():
+            raise ValidationError("You can like this album only once.")
+        user = self.request.user
+        albumreview = models.AlbumReview.objects.get(pk=self.kwargs['pk'])
+        serializer.save(albumreview=albumreview, user=user)
 
     def delete(self, *args, **kwargs):
-        albumreviewlike = models.AlbumReviewLike.objects.filter(pk=kwargs['pk'],
-        user = self.request.user,)
-        if albumreviewlike.exists():
-            return self.destroy(self.request, *args, **kwargs)
+        if self.get_queryset().exists():
+            self.get_queryset().delete()
+            return response.Response(status=status.HTTP_204_NO_CONTENT)
         else:
-            raise ValidationError(_('Can only delete your own likes.'))
-        
-    def put(self, *args, **kwargs):
-        albumreviewlike = models.AlbumReviewLike.objects.filter(pk=kwargs['pk'],
-        user = self.request.user,)
-        if albumreviewlike.exists():
-            return self.update(self.request, *args, **kwargs)
-        else:
-            raise ValidationError(_('Can only update your own likes.'))
+            raise ValidationError("You can only unlike this album after you like it.")
